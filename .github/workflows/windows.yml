@@ -39,6 +39,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Checkout source
+        run: |
+          set -x
+          pwd
+          ls -alh
+          pwd
+          ls -alh src
+
       - name: Install dependencies
         uses: msys2/setup-msys2@v2
         with:
