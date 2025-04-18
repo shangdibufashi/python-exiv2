@@ -101,8 +101,7 @@ jobs:
           pversion="${{ matrix.python_version }}"
           pversion=$(echo "$pversion" | sed 's/\.//')
           pversion="cp$pversion"
-          "$Python_ROOT_DIR"/python.exe setup.py bdist_wheel --plat-name win_amd64 --python-tag=$pversion >> build.log 2>&1
-          cat build.log
+          "$Python_ROOT_DIR"/python.exe setup.py bdist_wheel --plat-name win_amd64 --python-tag=$pversion
           ls -alh dist/
           "$Python_ROOT_DIR"/python.exe -m pip install dist/*.whl
 
