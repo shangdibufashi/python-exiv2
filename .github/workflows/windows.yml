@@ -1,0 +1,112 @@
+name: Windows Build
+on:
+  push:
+    branches:
+      # - test
+      - master
+      - dev
+      - releases
+      - 'release-[0-9]+.*'
+    tags:
+      - '[0-9]+.*'
+  pull_request:
+    branches:
+      - dev
+      - releases
+      - 'release-[0-9]+.*'
+  workflow_dispatch:
+
+env:
+  publish_pre_dev_labels: '[]'
+  CLOUDFLARED_VERSION: "2025.2.1"
+
+
+jobs:
+  win-build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: msys2 {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [release]
+        python_version: ['3.10'] # ['3.8', '3.9', '3.10', '3.11', '3.12']
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          location: C:\msys2
+          update: true
+          msystem: MINGW64
+          install: |
+            git
+            intltool
+            zip
+            unzip
+            openssh
+            wget
+            mingw-w64-x86_64-editrights
+            mingw-w64-x86_64-clang
+          pacboy: |
+            cc:p
+            pkgconf:p
+            cmake:p
+            make:p
+            autotools:p
+            exiv2:p
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_version }}
+          cache: 'pip'
+      - name: Install Python dependencies
+        run: |
+          set -x
+          echo "Python_ROOT_DIR=$Python_ROOT_DIR"
+          ls -alh "$Python_ROOT_DIR"
+          "$Python_ROOT_DIR"/python.exe -c "import platform; print('Python Version:', platform.python_version()); print('Build:', platform.python_build()); print('Compiler:', platform.python_compiler())"
+          "$Python_ROOT_DIR"/python.exe --version
+          "$Python_ROOT_DIR"/python.exe -m pip install -r src/requirements.txt
+
+      - name: build
+        run: |
+          set -x
+          pversion="${{ matrix.python_version }}"
+          pversion=$(echo "$pversion" | sed 's/\.//')
+          pversion="python$pversion.lib"
+          Python_ROOT_DIR=$(echo "$Python_ROOT_DIR" | sed 's/\\/\//g')
+          export PYTHON_INCLUDE_DIR="$Python_ROOT_DIR/include" 
+          export PYTHON_LIBRARY="$Python_ROOT_DIR/libs/" 
+          export PYTHON_LIBRARY_FILE="$Python_ROOT_DIR/libs/$pversion" 
+          export Python_EXECUTABLE="$Python_ROOT_DIR/python.exe"
+
+          rm -rf build dist
+          export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+          "$Python_EXECUTABLE" -c "import encodings; print('Success')"
+          pversion="${{ matrix.python_version }}"
+          pversion=$(echo "$pversion" | sed 's/\.//')
+          pversion="cp$pversion"
+          "$Python_ROOT_DIR"/python.exe setup.py bdist_wheel --plat-name win_amd64 --python-tag=$pversion >> build.log 2>&1
+          cat build.log
+          ls -alh dist/
+          "$Python_ROOT_DIR"/python.exe -m pip install dist/*.whl
+
+      - name: date
+        id: date
+        run: echo "date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+
+      - name: Publish artifacts
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+        with:
+          tag_name: nightly-${{ steps.date.outputs.date }}
+          files: |
+            src/dist/*.whl
